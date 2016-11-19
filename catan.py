@@ -144,14 +144,22 @@ def est_radius(vexlist):
 
     diag = (diag1 + diag2 + diag3)/3
 
-    return diag * 0.15
+    return (diag / 2) * 0.15
 
 
-def plot_images(input, out):
-    for input_item,out_item in zip(input, out):
+def compute_vertices(vexlist):
+    # tuples of list of hex coords and the computed radius
+    return [(get_hex_coords(copy.copy(vertices)), est_radius(copy.copy(vertices))) for vertices in vexlist]
+
+
+def plot_images(input, out, hexinfo):
+    for input_item, out_item, hexinfo_item in zip(input, out, hexinfo):
         x_size, y_size = PLOT_SHAPE
-        plt.subplot(x_size, y_size, 1)
+        ax = plt.subplot(x_size, y_size, 1)
         plt.imshow(input_item)
+        for el in hexinfo_item[0]:
+            circle = plt.Circle((el[0], el[1]), radius=hexinfo_item[1], alpha=0.4, color='white')
+            ax.add_artist(circle)
 
         for index, img in enumerate(out_item):
             plt.subplot(x_size, y_size, index+2)
@@ -162,10 +170,11 @@ def plot_images(input, out):
 
 file_paths = list_file_paths(INPUT_DIR_PATH)
 input, input_grey = get_input_data(file_paths)
+hexinfo = compute_vertices(vlist)
 
 out = perform_image_computations(input, input_grey)
 
-plot_images(input, out)
+plot_images(input, out, hexinfo)
 
 
 
