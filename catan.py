@@ -109,50 +109,6 @@ def get_hex_coords(vexlist):
     # return a tuple of a list of 19 tuples of hex coords and circle radius
     return hexes, (diag / 2) * 0.15
 
-# expects list of 6 tuples with vertex coords
-def est_radius(vexlist):
-    if len(vexlist) != 6:
-        return -1
-
-    # sort vexlist
-    vexx = [coord[0] for coord in vexlist]
-    sortx = sorted(vexx)
-
-    nodups = len(vexx) == len(set(vexx))
-    sortvex = []
-    if nodups:
-        for x in sortx:
-            el = [item for item in vexlist if item[0] == x]
-            vexlist.remove(el[0])
-            sortvex.append(el[0])
-
-    else:
-        vexy = [coord[1] for coord in vexlist]
-        sorty = sorted(vexy)
-        for x in sortx:
-            ellist = []
-            for y in sorty:
-                el = [item for item in vexlist if item[0] == x and item[1] == y]
-                if len(el) > 0:
-                    ellist.append(el[0])
-            vexlist.remove(ellist[0])
-            sortvex.append(ellist[0])
-
-    botleft = sortvex[0]
-    botright = sortvex[1]
-    left = sortvex[2]
-    right = sortvex[3]
-    topleft = sortvex[4]
-    topright = sortvex[5]
-
-    diag1 = ((right[0] - left[0])**2 + (right[1] - left[1]))**(1/2)
-    diag2 = ((topright[0] - botleft[0])**2 + (topright[1] - botleft[1]))**(1/2)
-    diag3 = ((botright[0] - topleft[0])**2 + (botright[1] - topleft[1]))**(1/2)
-
-    diag = (diag1 + diag2 + diag3)/3
-
-    return (diag / 2) * 0.15
-
 
 def compute_vertices(vexlist):
     # tuples of list of hex coords and the computed radius
