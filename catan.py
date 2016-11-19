@@ -99,8 +99,15 @@ def get_hex_coords(vexlist):
              ltrhexes[0], ltrhexes[1], centralhex, ltrhexes[3], ltrhexes[4],
              toplefthex, tltbrhexes[1], blttrhexes[3], toprighthex, tltbrhexes[0], tophex, blttrhexes[4]]
 
-    # return list of 19 tuples of hex coords
-    return hexes
+    # compute the estimated radius
+    diag1 = ((right[0] - left[0]) ** 2 + (right[1] - left[1])) ** (1 / 2)
+    diag2 = ((topright[0] - botleft[0]) ** 2 + (topright[1] - botleft[1])) ** (1 / 2)
+    diag3 = ((botright[0] - topleft[0]) ** 2 + (botright[1] - topleft[1])) ** (1 / 2)
+
+    diag = (diag1 + diag2 + diag3) / 3
+
+    # return a tuple of a list of 19 tuples of hex coords and circle radius
+    return hexes, (diag / 2) * 0.15
 
 # expects list of 6 tuples with vertex coords
 def est_radius(vexlist):
@@ -149,7 +156,7 @@ def est_radius(vexlist):
 
 def compute_vertices(vexlist):
     # tuples of list of hex coords and the computed radius
-    return [(get_hex_coords(copy.copy(vertices)), est_radius(copy.copy(vertices))) for vertices in vexlist]
+    return [get_hex_coords(copy.copy(vertices)) for vertices in vexlist]
 
 
 def plot_images(input, out, hexinfo):
