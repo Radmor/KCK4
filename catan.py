@@ -3,40 +3,59 @@ from matplotlib import pyplot as plt
 import numpy as np
 import os
 
-input = []
-input_grey = []
+INPUT_DIR_PATH = 'input'
 
-for filename in os.listdir("input"):
-    input.append(data.imread("input/" + filename))
-    input_grey.append(data.imread("input/" + filename, as_grey=True))
+THRESHOLD_VALUE = 4/5
+CANNY_SIGMA_VALUE = 10
 
-out = []
-for i in range(0, len(input)):
-    r = np.zeros_like(input_grey[i])
-    g = np.zeros((len(input[i]), len(input[i][0])))
-    b = np.zeros((len(input[i]), len(input[i][0])))
-    threshb = np.zeros((len(input[i]), len(input[i][0])))
-    for j in range(0, len(input[i])):
-        for k in range(0, len(input[i][j])):
-            r[j][k] = input[i][j][k][0]
-            g[j][k] = input[i][j][k][1]
-            b[j][k] = input[i][j][k][2]
-            if b[j][k] > r[j][k]*4/5:
-                threshb[j][k] = 1
-            else:
-                threshb[j][k] = 0
-    sobel = filters.sobel(threshb)
-    canny = feature.canny(threshb, sigma=10)
-    out.append([threshb, sobel, canny])
+PLOT_SHAPE = (2,2)
 
 
-for i in range(0, len(input)):
-    plt.subplot(2, 2, 1)
-    plt.imshow(input[i])
+def list_file_paths(dir_path):
+    return [os.path.join(dir_path, file) for file in os.listdir(dir_path)]
 
-    for nn, img in enumerate(out[i]):
-        plt.subplot(2, 2, nn+2)
-        plt.imshow(img)
-        plt.gray()
+def get_input_data(file_paths):
+    return [data.imread(file) for file in file_paths], [data.imread(file, as_grey=True) for file in file_paths]
 
-    plt.show()
+def perform_image_computations(input, input_grey):
+    out = []
+    for input_item, input_grey_item in zip(input, input_grey):
+        zeros = np.zeros_like(input_grey_item)
+        r, g, b = zeros, zeros, zeros
+        g = np.zeros_like(input_grey_item)
+        b = np.zeros_like(input_grey_item)
+        threshb = np.zeros_like(input_grey_item)
+
+        for j, input_item_row in enumerate(input_item):
+            for k, input_item_cell in enumerate(input_item_row):
+                r[j][k], g[j][k], b[j][k] = input_item_cell
+                threshb[j][k] = b[j][k] > r[j][k]*THRESHOLD_VALUE
+        sobel = filters.sobel(threshb)
+        canny = feature.canny(threshb, sigma=CANNY_SIGMA_VALUE)
+        out.append([threshb, sobel, canny])
+
+    return out
+
+
+def plot_images(input, out):
+    for input_item,out_item in zip(input, out):
+        x_size, y_size = PLOT_SHAPE
+        plt.subplot(x_size, y_size, 1)
+        plt.imshow(input_item)
+
+        for index, img in enumerate(out_item):
+            plt.subplot(x_size, y_size, index+2)
+            plt.imshow(img)
+            plt.gray()
+
+        plt.show()
+
+file_paths = list_file_paths(INPUT_DIR_PATH)
+input, input_grey = get_input_data(file_paths)
+
+out = perform_image_computations(input, input_grey)
+
+plot_images(input, out)
+
+
+
