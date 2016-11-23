@@ -1,4 +1,4 @@
-from skimage import data, filters, morphology, feature, draw
+from skimage import data, filters, morphology, feature, draw, measure
 from matplotlib import pyplot as plt
 import numpy as np
 import os
@@ -148,11 +148,72 @@ def compute_hex_colors(hexinfo, input, input_grey):
     return [get_hex_colors(hex, image, image_grey) for hex, image, image_grey in zip(hexinfo, input, input_grey)]
 
 
-def plot_images(input, out, hexinfo, colors):
-    for input_item, out_item, hexinfo_item, colors_item in zip(input, out, hexinfo, colors):
+def get_gameboard_corners(input):
+    for input_item, second in input:
+        # coords = feature.corner_peaks(feature.corner_harris(input_item,k=0.24), min_distance=50,)
+        # coords = feature.corner_peaks(feature.corner_kitchen_rosenfeld(input_item,cval=5), min_distance=50,)
+        coords = feature.corner_peaks(feature.corner_moravec(input_item,), min_distance=50,)
+
+
+        # coords_subpix = feature.corner_subpix(input_item, coords, window_size=20)
+        # print(coords)
+        # print(coords_subpix)
+
+        #contours = measure.find_contours(input_item, 0.8)
+
+        # Display the image and plot all contours found
+        # fig, ax = plt.subplots()
+        # ax.imshow(input_item, interpolation='nearest', cmap=plt.cm.gray)
+        #
+        # for n, contour in enumerate(contours):
+        #     ax.plot(contour[:, 1], contour[:, 0], linewidth=2)
+
+
+        fig, ax = plt.subplots()
+        ax.imshow(input_item, interpolation='nearest', cmap=plt.cm.gray)
+        # ax.plot(coords[:, 1], coords[:, 0], '.b', markersize=3)
+        # ax.plot(coords_subpix[:, 1], coords_subpix[:, 0], '+r', markersize=15)
+        ax.plot(coords[:, 1], coords[:, 0], '+r', markersize=15)
+        plt.show()
+
+def get_gameboard_corners(input):
+    for input_item, second in input:
+        # coords = feature.corner_peaks(feature.corner_harris(input_item,k=0.24), min_distance=50,)
+        # coords = feature.corner_peaks(feature.corner_kitchen_rosenfeld(input_item,cval=5), min_distance=50,)
+        # coords = feature.corner_peaks(feature.corner_moravec(input_item,), min_distance=50,)
+
+
+        # coords_subpix = feature.corner_subpix(input_item, coords, window_size=20)
+        # print(coords)
+        # print(coords_subpix)
+
+        #contours = measure.find_contours(input_item, 0.8)
+
+        # Display the image and plot all contours found
+        # fig, ax = plt.subplots()
+        # ax.imshow(input_item, interpolation='nearest', cmap=plt.cm.gray)
+        #
+        # for n, contour in enumerate(contours):
+        #     ax.plot(contour[:, 1], contour[:, 0], linewidth=2)
+
+
+        # fig, ax = plt.subplots()
+        # ax.imshow(input_item, interpolation='nearest', cmap=plt.cm.gray)
+        # # ax.plot(coords[:, 1], coords[:, 0], '.b', markersize=3)
+        # # ax.plot(coords_subpix[:, 1], coords_subpix[:, 0], '+r', markersize=15)
+        # ax.plot(coords[:, 1], coords[:, 0], '+r', markersize=15)
+        # plt.show()
+
+        return feature.corner_peaks(feature.corner_moravec(input_item,), min_distance=50,)
+
+
+
+def plot_images(input, out, hexinfo, colors, corners):
+    for input_item, out_item, hexinfo_item, colors_item,corner_item in zip(input, out, hexinfo, colors, corners):
         x_size, y_size = PLOT_SHAPE
         ax = plt.subplot(x_size, y_size, 1)
         plt.imshow(input_item)
+
         for el in hexinfo_item[0]:
             circle = plt.Circle((el[0], el[1]), radius=hexinfo_item[1], alpha=0.4, color='white')
             ax.add_artist(circle)
@@ -163,8 +224,12 @@ def plot_images(input, out, hexinfo, colors):
             circle = plt.Circle((el[0], el[1]), radius=hexinfo_item[1], color=col)
             ax.add_artist(circle)
 
+        ax.plot(corners[:, 1], corners[:, 0], '+r', markersize=15)
+
         for index, img in enumerate(out_item):
-            plt.subplot(x_size, y_size, index+3)
+
+            ax = plt.subplot(x_size, y_size, index+3)
+            ax.plot(corners[:, 1], corners[:, 0], '+r', markersize=15)
             plt.imshow(img)
             plt.gray()
 
@@ -178,7 +243,9 @@ colors = compute_hex_colors(hexinfo, input, input_grey)
 
 out = perform_image_computations(input, input_grey)
 
-plot_images(input, out, hexinfo, colors)
+corners = get_gameboard_corners(out)
+
+plot_images(input, out, hexinfo, colors,corners)
 
 
 
