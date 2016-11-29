@@ -312,17 +312,21 @@ def get_gameboard_corners(input):
         return feature.corner_peaks(feature.corner_moravec(input_item,), min_distance=50,)
 
 
-def plot_images(input, filled, hexinfo, vertices, contours):
-    for input_item, filled_item, hexinfo_item, vertex_item, contour_item in zip(input, filled, hexinfo, vertices, contours):
+def plot_images(input, filled, hexinfo, vertices, contours, colors):
+    for input_item, filled_item, hexinfo_item, vertex_item, contour_item, color_item in zip(input, filled, hexinfo, vertices, contours, colors):
         image = input_item.copy()
+        heximage = cv2.cvtColor(filled_item, cv2.COLOR_GRAY2RGB)
         for c in contour_item[1]:
             cv2.drawContours(image, [c], -1, (0, 255, 0), 2)
-        for v in hexinfo_item[0]:
+        for v, col in zip(hexinfo_item[0], color_item):
             vmod = tuple([int(v[0]), int(v[1])])
             cv2.circle(image, vmod, 10, (255, 255, 255))
+            colmod = tuple([255*val for val in col])
+            cv2.circle(heximage, vmod, 10, colmod, 15)
         # for i, v in enumerate(vertex_item):
         #     cv2.circle(image, tuple(v[0]), 10, (0, 0, 100 + 30*i), 5)
         cv2.imshow('img', image)
+        cv2.imshow('img2', heximage)
         cv2.waitKey(0)
         cv2.destroyAllWindows()
 
@@ -356,17 +360,15 @@ file_paths = list_file_paths(INPUT_DIR_PATH)
 input, input_grey = get_input_data(file_paths)
 filled = perform_image_computations(input, input_grey)
 vertices, contours = get_corners_contours_opencv(filled)
-# print(vertices)
 hexinfo = compute_vertices(vertices)
-# print(vertices)
-# colors = compute_hex_colors(hexinfo, input, input_grey)
+colors = compute_hex_colors(hexinfo, input, input_grey)
 
 
 
 
 # corners = get_gameboard_corners(out)
 
-plot_images(input, filled, hexinfo, vertices, contours)
+plot_images(input, filled, hexinfo, vertices, contours, colors)
 
 
 
