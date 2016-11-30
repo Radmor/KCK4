@@ -12,13 +12,9 @@ INPUT_DIR_PATH = 'input'
 
 THRESHOLD_VALUE = 4/5
 CANNY_SIGMA_VALUE = 10
-RADIUS_MAGNIFIER = 0.85
+RADIUS_MAGNIFIER = 0.95
 
-vlist = [[(510, 905), (698, 209), (1390, 0), (1950, 509), (998, 1444), (1742, 1271)],
-         [(832, 160), (1520, 105), (516, 762), (1918, 697), (852, 1360), (1567, 1357)],
-         [(1272, 59), (696, 386), (1824, 1181), (1878, 438), (651, 1047), (1180, 1451)]]
-
-PLOT_SHAPE = (2, 2)
+# PLOT_SHAPE = (2, 2)
 
 
 def list_file_paths(dir_path):
@@ -245,11 +241,36 @@ def get_corners_contours_opencv(input):
             # hexclr = cv2.cvtColor(hex, cv2.COLOR_GRAY2RGB)
             # cv2.drawContours(hexclr, [c], -1, (0, 255, 0), 2)
             peri = cv2.arcLength(c, True)
-            corners = cv2.approxPolyDP(c, 0.04 * peri, True)
+            corners = cv2.approxPolyDP(c, 0.05 * peri, True)
 
         vertices.append(corners.tolist())
         contours.append(cnts)
     return vertices, contours
+
+
+def colors_classification(colors):
+    classified = []
+    for n, col in enumerate(colors):
+        add1 = False
+        for cl in classified:
+            add2 = True
+            for c in cl:
+                if abs(c[1][0] - col[0]) < 0.2 and abs(c[1][1] - col[1]) < 0.2 and abs(c[1][2] - col[2]) < 0.2:
+                    continue
+                else:
+                    add2 = False
+                    break
+            if add2:
+                add1 = True
+                cl.append((n, col))
+                break
+        if not add1:
+            classified.append([(n, col)])
+    return classified
+
+
+def compute_colors_classification(colors):
+    return [colors_classification(colors_item) for colors_item in colors]
 
 
 def get_gameboard_corners(input):
@@ -312,19 +333,24 @@ def get_gameboard_corners(input):
         return feature.corner_peaks(feature.corner_moravec(input_item,), min_distance=50,)
 
 
-def plot_images(input, filled, hexinfo, vertices, contours, colors):
-    for input_item, filled_item, hexinfo_item, vertex_item, contour_item, color_item in zip(input, filled, hexinfo, vertices, contours, colors):
+def plot_images(input, filled, hexinfo, vertices, contours, colors, classification):
+    for input_item, filled_item, hexinfo_item, vertices_item, contour_item, color_item, classification_item in \
+            zip(input, filled, hexinfo, vertices, contours, colors, classification):
         image = input_item.copy()
         heximage = cv2.cvtColor(filled_item, cv2.COLOR_GRAY2RGB)
+        font = cv2.FONT_HERSHEY_SIMPLEX
         for c in contour_item[1]:
             cv2.drawContours(image, [c], -1, (0, 255, 0), 2)
         for v, col in zip(hexinfo_item[0], color_item):
             vmod = tuple([int(v[0]), int(v[1])])
-            cv2.circle(image, vmod, 10, (255, 255, 255))
+            cv2.circle(image, vmod, int(hexinfo_item[1]), (255, 255, 255))
             colmod = tuple([255*val for val in col])
             cv2.circle(heximage, vmod, 10, colmod, 15)
-        # for i, v in enumerate(vertex_item):
-        #     cv2.circle(image, tuple(v[0]), 10, (0, 0, 100 + 30*i), 5)
+        for n, cl in enumerate(classification_item):
+            for p in cl:
+                cv2.putText(image, str(n), (int(hexinfo_item[0][p[0]][0]) - 7, int(hexinfo_item[0][p[0]][1]) + 7), font, 0.5, (255, 255, 255), 2, cv2.LINE_AA)
+        for i, v in enumerate(vertices_item):
+            cv2.circle(image, tuple(v[0]), 10, (0, 0, 100 + 30*i), 1)
         cv2.imshow('img', image)
         cv2.imshow('img2', heximage)
         cv2.waitKey(0)
@@ -362,13 +388,14 @@ filled = perform_image_computations(input, input_grey)
 vertices, contours = get_corners_contours_opencv(filled)
 hexinfo = compute_vertices(vertices)
 colors = compute_hex_colors(hexinfo, input, input_grey)
+classification  = compute_colors_classification(colors)
 
 
 
 
 # corners = get_gameboard_corners(out)
 
-plot_images(input, filled, hexinfo, vertices, contours, colors)
+plot_images(input, filled, hexinfo, vertices, contours, colors, classification)
 
 
 
