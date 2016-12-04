@@ -1,11 +1,11 @@
 from skimage import data, filters, morphology, feature, draw, measure, color
 from matplotlib import pyplot as plt
-plt.switch_backend('Qt4Agg')
 import numpy as np
 import os
 import copy
 from scipy.ndimage.morphology import binary_fill_holes
 import cv2
+from sklearn.cluster import KMeans
 
 INPUT_DIR_PATH = 'input'
 
@@ -13,6 +13,8 @@ INPUT_DIR_PATH = 'input'
 THRESHOLD_VALUE = 4/5
 CANNY_SIGMA_VALUE = 10
 RADIUS_MAGNIFIER = 0.95
+
+KMEANS_CENTROIDS = np.array([[0.2, 0.2, 0.2], [0.2, 0.5, 0.5], [0.2, 0.4, 0.8], [0.4, 0.5, 0.7], [0.3, 0.6, 0.9]])
 
 # PLOT_SHAPE = (2, 2)
 
@@ -199,6 +201,8 @@ def get_hex_coords(vexlist):
 # expects input from the get_hex_coords function
 def get_hex_colors(hexinfo, image, image_grey):
     colors = []
+    if hexinfo == -1:
+        return [(0, 0, 0) for i in range(0, 19)]
 
     for hex in hexinfo[0]:
         circle = np.zeros_like(image_grey)
@@ -241,7 +245,7 @@ def get_corners_contours_opencv(input):
             # hexclr = cv2.cvtColor(hex, cv2.COLOR_GRAY2RGB)
             # cv2.drawContours(hexclr, [c], -1, (0, 255, 0), 2)
             peri = cv2.arcLength(c, True)
-            corners = cv2.approxPolyDP(c, 0.05 * peri, True)
+            corners = cv2.approxPolyDP(c, 0.04 * peri, True)
 
         vertices.append(corners.tolist())
         contours.append(cnts)
@@ -269,8 +273,16 @@ def colors_classification(colors):
     return classified
 
 
+def colors_classification_kmeans(colors):
+    # est = KMeans(n_clusters=5)
+    est = KMeans(n_clusters=5, n_init=1, init=KMEANS_CENTROIDS)
+    est.fit(colors)
+    # print(est.cluster_centers_)
+    return est.labels_
+
+
 def compute_colors_classification(colors):
-    return [colors_classification(colors_item) for colors_item in colors]
+    return [colors_classification_kmeans(colors_item) for colors_item in colors]
 
 
 def get_gameboard_corners(input):
@@ -341,14 +353,16 @@ def plot_images(input, filled, hexinfo, vertices, contours, colors, classificati
         font = cv2.FONT_HERSHEY_SIMPLEX
         for c in contour_item[1]:
             cv2.drawContours(image, [c], -1, (0, 255, 0), 2)
-        for v, col in zip(hexinfo_item[0], color_item):
-            vmod = tuple([int(v[0]), int(v[1])])
-            cv2.circle(image, vmod, int(hexinfo_item[1]), (255, 255, 255))
-            colmod = tuple([255*val for val in col])
-            cv2.circle(heximage, vmod, 10, colmod, 15)
-        for n, cl in enumerate(classification_item):
-            for p in cl:
-                cv2.putText(image, str(n), (int(hexinfo_item[0][p[0]][0]) - 7, int(hexinfo_item[0][p[0]][1]) + 7), font, 0.5, (255, 255, 255), 2, cv2.LINE_AA)
+        if hexinfo_item != -1:
+            for v, col, cl in zip(hexinfo_item[0], color_item, classification_item):
+                vmod = tuple([int(v[0]), int(v[1])])
+                cv2.circle(image, vmod, int(hexinfo_item[1]), (255, 255, 255))
+                colmod = tuple([255*val for val in col])
+                cv2.circle(heximage, vmod, 10, colmod, 15)
+                cv2.putText(image, str(cl), (int(v[0]) - 7, int(v[1]) + 7), font, 0.5, (255, 255, 255), 2, cv2.LINE_AA)
+            # for n, cl in enumerate(classification_item):
+            #     for p in cl:
+            #         cv2.putText(image, str(n), (int(hexinfo_item[0][p[0]][0]) - 7, int(hexinfo_item[0][p[0]][1]) + 7), font, 0.5, (255, 255, 255), 2, cv2.LINE_AA)
         for i, v in enumerate(vertices_item):
             cv2.circle(image, tuple(v[0]), 10, (0, 0, 100 + 30*i), 1)
         cv2.imshow('img', image)
