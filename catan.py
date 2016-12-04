@@ -15,6 +15,7 @@ CANNY_SIGMA_VALUE = 10
 RADIUS_MAGNIFIER = 0.95
 
 KMEANS_CENTROIDS = np.array([[0.2, 0.2, 0.2], [0.2, 0.5, 0.5], [0.2, 0.4, 0.8], [0.4, 0.5, 0.7], [0.3, 0.6, 0.9]])
+UNTRANSFORMED_HEX_VERTICES = np.array([[122, 50], [266, 50], [338, 175], [266, 300], [122, 300], [50, 175]])
 
 # PLOT_SHAPE = (2, 2)
 
@@ -85,6 +86,8 @@ def perform_image_computations(input, input_grey):
         # Combine the two images to get the foreground.
         hex = threshb | im_floodfill_inv
 
+        hex = cv2.GaussianBlur(hex, (7, 7), 0)
+
 
 
         # for i in range(0, 20):
@@ -111,8 +114,8 @@ def perform_image_computations(input, input_grey):
         # # plt.imshow(filled)
         # plt.gray()
         # plt.show()
-        sobel = filters.sobel(threshb)
-        canny = feature.canny(threshb, sigma=CANNY_SIGMA_VALUE)
+        # sobel = filters.sobel(threshb)
+        # canny = feature.canny(threshb, sigma=CANNY_SIGMA_VALUE)
         # out.append([threshb, sobel, canny])
         out.append(hex)
 
@@ -122,10 +125,12 @@ def perform_image_computations(input, input_grey):
 # expects list of 6 tuples with vertex coords
 # warning: clears input list! use copy.copy to ensure safety
 def get_hex_coords(vexlist):
+    vexlist = vexlist[0]
+
     if len(vexlist) != 6:
         return -1
 
-    vexlist = [el[0] for el in vexlist]
+    # vexlist = [el[0] for el in vexlist]
 
     # sort vexlist
     # vexx = [coord[0] for coord in vexlist]
@@ -245,9 +250,9 @@ def get_corners_contours_opencv(input):
             # hexclr = cv2.cvtColor(hex, cv2.COLOR_GRAY2RGB)
             # cv2.drawContours(hexclr, [c], -1, (0, 255, 0), 2)
             peri = cv2.arcLength(c, True)
-            corners = cv2.approxPolyDP(c, 0.04 * peri, True)
+            corners = cv2.approxPolyDP(c, 0.01 * peri, True)
 
-        vertices.append(corners.tolist())
+        vertices.append([v[0] for v in corners.tolist()])
         contours.append(cnts)
     return vertices, contours
 
@@ -283,6 +288,38 @@ def colors_classification_kmeans(colors):
 
 def compute_colors_classification(colors):
     return [colors_classification_kmeans(colors_item) for colors_item in colors]
+
+
+def straighten_image(input, input_grey, vertices):
+    h, _ = cv2.findHomography(np.array(vertices), UNTRANSFORMED_HEX_VERTICES)
+    output = cv2.warpPerspective(input, h, (400, 400))
+    output_grey = cv2.warpPerspective(input_grey, h, (400, 400))
+    return output, output_grey, h
+
+
+def straighten_images(input, input_grey, vertices):
+    straight = []
+    straight_grey = []
+    perspective = []
+    for input_item, input_grey_item, vertices_item in zip(input, input_grey, vertices):
+        ret = straighten_image(input_item, input_grey_item, vertices_item)
+        straight.append(ret[0])
+        straight_grey.append(ret[1])
+        perspective.append(ret[2])
+    return straight, straight_grey, perspective
+
+
+def transform_points(points, perspective):
+    return [cv2.perspectiveTransform(np.float32([points_item]), perspective_item) for points_item, perspective_item
+            in zip(points, perspective)]
+
+
+def untransform_points(points, perspective):
+    # for p in points:
+    #     print(p[0])
+    #     print(np.float32(p[0]))
+    return [cv2.perspectiveTransform(np.float32([points_item[0]]), np.linalg.inv(perspective_item)) for points_item, perspective_item
+            in zip(points, perspective)]
 
 
 def get_gameboard_corners(input):
@@ -345,16 +382,17 @@ def get_gameboard_corners(input):
         return feature.corner_peaks(feature.corner_moravec(input_item,), min_distance=50,)
 
 
-def plot_images(input, filled, hexinfo, vertices, contours, colors, classification):
-    for input_item, filled_item, hexinfo_item, vertices_item, contour_item, color_item, classification_item in \
-            zip(input, filled, hexinfo, vertices, contours, colors, classification):
+def plot_images(input, filled, mod_hexinfo, hexinfo, vertices, contours, colors, classification):
+    for input_item, filled_item, mod_hexinfo_item, hexinfo_item, vertices_item, contour_item, color_item, \
+            classification_item in zip(input, filled, mod_hexinfo, hexinfo, vertices, contours, colors, classification):
         image = input_item.copy()
         heximage = cv2.cvtColor(filled_item, cv2.COLOR_GRAY2RGB)
         font = cv2.FONT_HERSHEY_SIMPLEX
         for c in contour_item[1]:
             cv2.drawContours(image, [c], -1, (0, 255, 0), 2)
-        if hexinfo_item != -1:
-            for v, col, cl in zip(hexinfo_item[0], color_item, classification_item):
+        if True: #hexinfo_item != -1:
+            for v, col, cl in zip(mod_hexinfo_item[0], color_item, classification_item):
+                # print(v)
                 vmod = tuple([int(v[0]), int(v[1])])
                 cv2.circle(image, vmod, int(hexinfo_item[1]), (255, 255, 255))
                 colmod = tuple([255*val for val in col])
@@ -364,7 +402,7 @@ def plot_images(input, filled, hexinfo, vertices, contours, colors, classificati
             #     for p in cl:
             #         cv2.putText(image, str(n), (int(hexinfo_item[0][p[0]][0]) - 7, int(hexinfo_item[0][p[0]][1]) + 7), font, 0.5, (255, 255, 255), 2, cv2.LINE_AA)
         for i, v in enumerate(vertices_item):
-            cv2.circle(image, tuple(v[0]), 10, (0, 0, 100 + 30*i), 1)
+            cv2.circle(image, tuple(v), 10, (0, 0, 100 + 30*i), 1)
         cv2.imshow('img', image)
         cv2.imshow('img2', heximage)
         cv2.waitKey(0)
@@ -400,16 +438,22 @@ file_paths = list_file_paths(INPUT_DIR_PATH)
 input, input_grey = get_input_data(file_paths)
 filled = perform_image_computations(input, input_grey)
 vertices, contours = get_corners_contours_opencv(filled)
-hexinfo = compute_vertices(vertices)
-colors = compute_hex_colors(hexinfo, input, input_grey)
-classification  = compute_colors_classification(colors)
 
+straight, straight_grey, perspective = straighten_images(input, input_grey, vertices)
+#
+# for v, p in zip(vertices, perspective):
+#     print([v])
+#     print(np.float32([v]))
+#     print(cv2.perspectiveTransform(np.float32([v]), p))
 
+persp_vertices = transform_points(vertices, perspective)
+# filled = perform_image_computations(straight, straight_grey)
+# vertices, contours = get_corners_contours_opencv(filled)
+hexinfo = compute_vertices(persp_vertices)
+colors = compute_hex_colors(hexinfo, straight, straight_grey)
+classification = compute_colors_classification(colors)
 
-
-# corners = get_gameboard_corners(out)
-
-plot_images(input, filled, hexinfo, vertices, contours, colors, classification)
+plot_images(input, filled, untransform_points(hexinfo, perspective), hexinfo, vertices, contours, colors, classification)
 
 
 
