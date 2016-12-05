@@ -37,19 +37,22 @@ def get_input_data(file_paths):
 
 def perform_image_computations(input, input_grey):
     out = []
+    corners_out = []
+    contours_out = []
     for input_item, input_grey_item in zip(input, input_grey):
         r = np.zeros_like(input_grey_item)
         g = np.zeros_like(input_grey_item)
         b = np.zeros_like(input_grey_item)
         threshb = np.zeros_like(input_grey_item)
         threshb2 = np.zeros_like(input_grey_item)
-        hsv = color.rgb2hsv(input_item)
+        hsv = cv2.cvtColor(input_item, cv2.COLOR_BGR2HSV)
         bmax = 0
 
         # for j, input_item_row in enumerate(input_item):
         #     for k, input_item_cell in enumerate(input_item_row):
-                # b[j][k], g[j][k], r[j][k] = input_item_cell
-                # threshb[j][k] = b[j][k] > r[j][k]*THRESHOLD_VALUE
+        #         # print(input_grey_item[j][k])
+        #         b[j][k], g[j][k], r[j][k] = input_item_cell
+        #         threshb[j][k] = b[j][k] > r[j][k] * THRESHOLD_VALUE and 200 > input_grey_item[j][k] > 50
 
                 # r[j][k], g[j][k], b[j][k] = input_item_cell
                 # if b[j][k] > bmax:
@@ -61,12 +64,111 @@ def perform_image_computations(input, input_grey):
                 # else:
                 #     threshb[j][k] = 0.0
         # print(bmax)
-        for j, input_item_row in enumerate(input_item):
-            for k, input_item_cell in enumerate(input_item_row):
-                # print(input_grey_item[j][k])
-                b[j][k], g[j][k], r[j][k] = input_item_cell
-                threshb[j][k] = b[j][k] > r[j][k]*THRESHOLD_VALUE and 200 > input_grey_item[j][k] > 50
-        # filled = binary_fill_holes(threshb)
+
+        dist = 60
+        found = False
+        font = cv2.FONT_HERSHEY_SIMPLEX
+
+        for dist in range(30, 90, 10):
+            if found:
+                break
+
+        # for j, input_item_row in enumerate(input_item):
+        #     for k, input_item_cell in enumerate(input_item_row):
+        #         # print(input_grey_item[j][k])
+        #         b[j][k], g[j][k], r[j][k] = input_item_cell
+        #         threshb[j][k] = b[j][k] > r[j][k]*THRESHOLD_VALUE and 200 > input_grey_item[j][k] > 50
+        #         print(hsv[j][k][1])
+        #         if(hsv[j][k][1] > bmax):
+        #             bmax = hsv[j][k][1]
+        # print(bmax)
+        # filled = binary_fill_hole[k]s(threshb)
+            for angle in range(180, 300, 10):
+                if found:
+                    break
+                for j, input_item_row in enumerate(input_item):
+                    for k, input_item_cell in enumerate(input_item_row):
+                        threshb[j][k] = (angle - dist / 2) / 2 < hsv[j][k][0] < (angle + dist / 2) / 2# and hsv[j][k][1] > 100
+                        # if threshb[j][k] == 1:
+                        #     print(hsv[j][k][1])
+                        # print(threshb[j][k])
+                        # print((angle - dist / 2) / 2)
+                        # print((angle + dist / 2) / 2)
+                        # print(hsv[j][k][0])
+                        # filling holes
+                # Copy the thresholded image.
+                im_floodfill = threshb.copy()
+
+                # Mask used to flood filling.
+                # Notice the size needs to be 2 pixels than the image.
+                h, w = threshb.shape[:2]
+                mask = np.zeros((h + 2, w + 2), np.uint8)
+
+                # Floodfill from point (0, 0)
+                cv2.floodFill(im_floodfill, mask, (0, 0), 255)
+
+                # Invert floodfilled image
+                im_floodfill_inv = cv2.bitwise_not(im_floodfill)
+
+                # Combine the two images to get the foreground.
+                hex = threshb | im_floodfill_inv
+
+                hex = cv2.GaussianBlur(hex, (7, 7), 0)
+                cnts = cv2.findContours(hex.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+                # for c in cnts[1]:
+                    # cv2.drawContours(input_item, [c], -1, (0, 255, 0), 2)
+                    # hexclr = cv2.cvtColor(hex, cv2.COLOR_GRAY2RGB)
+                    # cv2.drawContours(hexclr, [c], -1, (0, 255, 0), 2)
+
+                hexcl = cv2.cvtColor(hex, cv2.COLOR_GRAY2RGB)
+
+                max_peri = 0
+                max_peri_index = 0
+
+                for i, c in enumerate(cnts[1]):
+                    peri = cv2.arcLength(c, True)
+                    if peri > max_peri:
+                        max_peri = peri
+                        max_peri_index = i
+
+                if len(cnts[1]) > 0:
+                    corners = cv2.approxPolyDP(cnts[1][max_peri_index], 0.01 * max_peri, True)
+                    corners_slim = [v[0] for v in corners.tolist()]
+                    if len(corners_slim) == 6 and cv2.isContourConvex(corners):
+                        cv2.drawContours(hexcl, [cnts[1][max_peri_index]], -1, (0, 255, 0), 2)
+                        for i, v in enumerate(corners_slim):
+                            cv2.circle(hexcl, tuple(v), 10, (0, 0, 100 + 30*i), 1)
+
+                        found = True
+                        corners_out.append(corners_slim)
+                        contours_out.append(cnts[1][max_peri_index])
+                        out.append(hex)
+        #                 cv2.imshow('img2', hexcl)
+        #
+        # cv2.imshow('img', input_item)
+        # cv2.waitKey(0)
+        # cv2.destroyAllWindows()
+
+        if not found:
+            corners_out.append([])
+            contours_out.append([])
+            out.append([])
+
+        #     for c in cnts[1]:
+        #         cv2.drawContours(hexcl, [c], -1, (0, 255, 0), 2)
+        #         peri = cv2.arcLength(c, True)
+        #         corners = cv2.approxPolyDP(c, 0.01 * peri, True)
+        #         corners = [v[0] for v in corners.tolist()]
+        #         for i, v in enumerate(corners):
+        #             cv2.circle(hexcl, tuple(v), 10, (0, 0, 100 + 30*i), 1)
+        #         if len(corners) > 0:
+        #             cv2.putText(hexcl, str(len(corners)), (corners[0][0] + 5, corners[0][1] + 10), font, 0.5, (255, 0, 0), 2, cv2.LINE_AA)
+        #
+        #     cv2.imshow('img' + str(angle), hexcl)
+        # cv2.waitKey(0)
+        # cv2.destroyAllWindows()
+
 
         # filling holes
         # Copy the thresholded image.
@@ -78,7 +180,7 @@ def perform_image_computations(input, input_grey):
         mask = np.zeros((h + 2, w + 2), np.uint8)
 
         # Floodfill from point (0, 0)
-        cv2.floodFill(im_floodfill, mask, (0, 0), 255);
+        cv2.floodFill(im_floodfill, mask, (0, 0), 255)
 
         # Invert floodfilled image
         im_floodfill_inv = cv2.bitwise_not(im_floodfill)
@@ -87,6 +189,9 @@ def perform_image_computations(input, input_grey):
         hex = threshb | im_floodfill_inv
 
         hex = cv2.GaussianBlur(hex, (7, 7), 0)
+
+
+        # hexcl = cv2.cvtColor(hex, cv2.COLOR_GRAY2RGB)
 
 
 
@@ -108,7 +213,7 @@ def perform_image_computations(input, input_grey):
         # cv2.imshow('img', input_item)
         # cv2.waitKey(0)
         # cv2.destroyAllWindows()
-        # cv2.imshow('img', hexclr)
+        # cv2.imshow('img', hexcl)
         # cv2.waitKey(0)
         # cv2.destroyAllWindows()
         # # plt.imshow(filled)
@@ -117,9 +222,10 @@ def perform_image_computations(input, input_grey):
         # sobel = filters.sobel(threshb)
         # canny = feature.canny(threshb, sigma=CANNY_SIGMA_VALUE)
         # out.append([threshb, sobel, canny])
-        out.append(hex)
+        # out.append(hex)
 
-    return out
+    return corners_out, contours_out, out
+    # return out
 
 
 # expects list of 6 tuples with vertex coords
@@ -231,11 +337,11 @@ def get_hex_colors(hexinfo, image, image_grey):
 
 def compute_vertices(vexlist):
     # tuples of list of hex coords and the computed radius
-    return [get_hex_coords(copy.copy(vertices)) for vertices in vexlist]
+    return [get_hex_coords(copy.copy(vertices)) if len(vertices) != 0 else [] for vertices in vexlist]
 
 
 def compute_hex_colors(hexinfo, input, input_grey):
-    return [get_hex_colors(hex, image, image_grey) for hex, image, image_grey in zip(hexinfo, input, input_grey)]
+    return [get_hex_colors(hex, image, image_grey) if len(hex) != 0 else [] for hex, image, image_grey in zip(hexinfo, input, input_grey)]
 
 
 def get_corners_contours_opencv(input):
@@ -287,7 +393,7 @@ def colors_classification_kmeans(colors):
 
 
 def compute_colors_classification(colors):
-    return [colors_classification_kmeans(colors_item) for colors_item in colors]
+    return [colors_classification_kmeans(colors_item) if len(colors_item) != 0 else [] for colors_item in colors]
 
 
 def straighten_image(input, input_grey, vertices):
@@ -302,15 +408,20 @@ def straighten_images(input, input_grey, vertices):
     straight_grey = []
     perspective = []
     for input_item, input_grey_item, vertices_item in zip(input, input_grey, vertices):
-        ret = straighten_image(input_item, input_grey_item, vertices_item)
-        straight.append(ret[0])
-        straight_grey.append(ret[1])
-        perspective.append(ret[2])
+        if len(vertices_item) == 0:
+            straight.append([])
+            straight_grey.append([])
+            perspective.append([])
+        else:
+            ret = straighten_image(input_item, input_grey_item, vertices_item)
+            straight.append(ret[0])
+            straight_grey.append(ret[1])
+            perspective.append(ret[2])
     return straight, straight_grey, perspective
 
 
 def transform_points(points, perspective):
-    return [cv2.perspectiveTransform(np.float32([points_item]), perspective_item) for points_item, perspective_item
+    return [cv2.perspectiveTransform(np.float32([points_item]), perspective_item) if len(points_item) != 0 else [] for points_item, perspective_item
             in zip(points, perspective)]
 
 
@@ -318,7 +429,7 @@ def untransform_points(points, perspective):
     # for p in points:
     #     print(p[0])
     #     print(np.float32(p[0]))
-    return [cv2.perspectiveTransform(np.float32([points_item[0]]), np.linalg.inv(perspective_item)) for points_item, perspective_item
+    return [cv2.perspectiveTransform(np.float32([points_item[0]]), np.linalg.inv(perspective_item)) if len(points_item) != 0 else [] for points_item, perspective_item
             in zip(points, perspective)]
 
 
@@ -383,14 +494,13 @@ def get_gameboard_corners(input):
 
 
 def plot_images(input, filled, mod_hexinfo, hexinfo, vertices, contours, colors, classification):
-    for input_item, filled_item, mod_hexinfo_item, hexinfo_item, vertices_item, contour_item, color_item, \
-            classification_item in zip(input, filled, mod_hexinfo, hexinfo, vertices, contours, colors, classification):
+    for i, (input_item, filled_item, mod_hexinfo_item, hexinfo_item, vertices_item, contour_item, color_item, \
+            classification_item) in enumerate(zip(input, filled, mod_hexinfo, hexinfo, vertices, contours, colors, classification)):
         image = input_item.copy()
-        heximage = cv2.cvtColor(filled_item, cv2.COLOR_GRAY2RGB)
-        font = cv2.FONT_HERSHEY_SIMPLEX
-        for c in contour_item[1]:
-            cv2.drawContours(image, [c], -1, (0, 255, 0), 2)
-        if True: #hexinfo_item != -1:
+        if len(hexinfo_item) != 0:
+            heximage = cv2.cvtColor(filled_item, cv2.COLOR_GRAY2RGB)
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            # cv2.drawContours(image, contour_item, -1, (0, 255, 0), 2)
             for v, col, cl in zip(mod_hexinfo_item[0], color_item, classification_item):
                 # print(v)
                 vmod = tuple([int(v[0]), int(v[1])])
@@ -401,12 +511,13 @@ def plot_images(input, filled, mod_hexinfo, hexinfo, vertices, contours, colors,
             # for n, cl in enumerate(classification_item):
             #     for p in cl:
             #         cv2.putText(image, str(n), (int(hexinfo_item[0][p[0]][0]) - 7, int(hexinfo_item[0][p[0]][1]) + 7), font, 0.5, (255, 255, 255), 2, cv2.LINE_AA)
-        for i, v in enumerate(vertices_item):
-            cv2.circle(image, tuple(v), 10, (0, 0, 100 + 30*i), 1)
-        cv2.imshow('img', image)
-        cv2.imshow('img2', heximage)
-        cv2.waitKey(0)
-        cv2.destroyAllWindows()
+            # for i, v in enumerate(vertices_item):
+            #     cv2.circle(image, tuple(v), 10, (0, 0, 100 + 30*i), 1)
+        #     cv2.imshow('img2', heximage)
+        # cv2.imshow('img', image)
+        # cv2.waitKey(0)
+        # cv2.destroyAllWindows()
+        cv2.imwrite('out/' + str(i) + '.jpg', image)
 
 
         # x_size, y_size = PLOT_SHAPE
@@ -436,19 +547,20 @@ def plot_images(input, filled, mod_hexinfo, hexinfo, vertices, contours, colors,
 
 file_paths = list_file_paths(INPUT_DIR_PATH)
 input, input_grey = get_input_data(file_paths)
-filled = perform_image_computations(input, input_grey)
-vertices, contours = get_corners_contours_opencv(filled)
+vertices, contours, filled = perform_image_computations(input, input_grey)
+# filled = perform_image_computations(input, input_grey)
+# vertices, contours = get_corners_contours_opencv(filled)
 
 straight, straight_grey, perspective = straighten_images(input, input_grey, vertices)
+# #
+# # for v, p in zip(vertices, perspective):
+# #     print([v])
+# #     print(np.float32([v]))
+# #     print(cv2.perspectiveTransform(np.float32([v]), p))
 #
-# for v, p in zip(vertices, perspective):
-#     print([v])
-#     print(np.float32([v]))
-#     print(cv2.perspectiveTransform(np.float32([v]), p))
-
 persp_vertices = transform_points(vertices, perspective)
-# filled = perform_image_computations(straight, straight_grey)
-# vertices, contours = get_corners_contours_opencv(filled)
+# # filled = perform_image_computations(straight, straight_grey)
+# # vertices, contours = get_corners_contours_opencv(filled)
 hexinfo = compute_vertices(persp_vertices)
 colors = compute_hex_colors(hexinfo, straight, straight_grey)
 classification = compute_colors_classification(colors)
