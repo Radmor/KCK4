@@ -1,9 +1,7 @@
-from skimage import data, filters, morphology, feature, draw, measure, color
-from matplotlib import pyplot as plt
+from skimage import draw
 import numpy as np
 import os
 import copy
-from scipy.ndimage.morphology import binary_fill_holes
 import cv2
 from sklearn.cluster import KMeans
 
@@ -25,14 +23,52 @@ def list_file_paths(dir_path):
 
 
 def get_input_data(file_paths):
-    # return [cv2.imread(file, 1) for file in file_paths], [cv2.imread(file, 0) for file in file_paths]
-
-
     imgs = [cv2.imread(file, 1) for file in file_paths]
     rs = [500.0 / img.shape[1] for img in imgs]
     dims = [(500, int(img.shape[0] * r)) for img, r in zip(imgs, rs)]
     return [cv2.resize(image, dim, interpolation=cv2.INTER_AREA) for image, dim in zip(imgs, dims)], [cv2.resize(
         cv2.imread(file, 0), dim, interpolation=cv2.INTER_AREA) for file, dim in zip(file_paths, dims)]
+
+
+def check_for_hexagon(thresholded):
+    # Copy the thresholded image.
+    im_floodfill = thresholded.copy()
+
+    # Mask used to flood filling.
+    # Notice the size needs to be 2 pixels than the image.
+    h, w = thresholded.shape[:2]
+    mask = np.zeros((h + 2, w + 2), np.uint8)
+
+    # Floodfill from point (0, 0)
+    cv2.floodFill(im_floodfill, mask, (0, 0), 255)
+
+    # Invert floodfilled image
+    im_floodfill_inv = cv2.bitwise_not(im_floodfill)
+
+    # Combine the two images to get the foreground.
+    hex = thresholded | im_floodfill_inv
+
+    hex = cv2.GaussianBlur(hex, (7, 7), 0)
+    cnts = cv2.findContours(hex.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    max_peri = 0
+    max_peri_index = 0
+
+    for i, c in enumerate(cnts[1]):
+        peri = cv2.arcLength(c, True)
+        if peri > max_peri:
+            max_peri = peri
+            max_peri_index = i
+
+    if len(cnts[1]) > 0:
+        corners = cv2.approxPolyDP(cnts[1][max_peri_index], 0.01 * max_peri, True)
+        corners_slim = [v[0] for v in corners.tolist()]
+        if len(corners_slim) == 6 and cv2.isContourConvex(corners):
+            return corners_slim, cnts[1][max_peri_index], hex, True
+        else:
+            return [], [], [], False
+    else:
+        return [], [], [], False
 
 
 def perform_image_computations(input, input_grey):
@@ -44,235 +80,39 @@ def perform_image_computations(input, input_grey):
         g = np.zeros_like(input_grey_item)
         b = np.zeros_like(input_grey_item)
         threshb = np.zeros_like(input_grey_item)
-        threshb2 = np.zeros_like(input_grey_item)
         hsv = cv2.cvtColor(input_item, cv2.COLOR_BGR2HSV)
-        bmax = 0
 
         found = False
 
         for j, input_item_row in enumerate(input_item):
             for k, input_item_cell in enumerate(input_item_row):
-                # print(input_grey_item[j][k])
                 b[j][k], g[j][k], r[j][k] = input_item_cell
                 threshb[j][k] = b[j][k] > r[j][k] * THRESHOLD_VALUE and 200 > input_grey_item[j][k] > 50
 
-        # Copy the thresholded image.
-        im_floodfill = threshb.copy()
-
-        # Mask used to flood filling.
-        # Notice the size needs to be 2 pixels than the image.
-        h, w = threshb.shape[:2]
-        mask = np.zeros((h + 2, w + 2), np.uint8)
-
-        # Floodfill from point (0, 0)
-        cv2.floodFill(im_floodfill, mask, (0, 0), 255)
-
-        # Invert floodfilled image
-        im_floodfill_inv = cv2.bitwise_not(im_floodfill)
-
-        # Combine the two images to get the foreground.
-        hex = threshb | im_floodfill_inv
-
-        hex = cv2.GaussianBlur(hex, (7, 7), 0)
-        cnts = cv2.findContours(hex.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-        # for c in cnts[1]:
-        # cv2.drawContours(input_item, [c], -1, (0, 255, 0), 2)
-        # hexclr = cv2.cvtColor(hex, cv2.COLOR_GRAY2RGB)
-        # cv2.drawContours(hexclr, [c], -1, (0, 255, 0), 2)
-
-        hexcl = cv2.cvtColor(hex, cv2.COLOR_GRAY2RGB)
-
-        max_peri = 0
-        max_peri_index = 0
-
-        for i, c in enumerate(cnts[1]):
-            peri = cv2.arcLength(c, True)
-            if peri > max_peri:
-                max_peri = peri
-                max_peri_index = i
-
-        if len(cnts[1]) > 0:
-            corners = cv2.approxPolyDP(cnts[1][max_peri_index], 0.01 * max_peri, True)
-            corners_slim = [v[0] for v in corners.tolist()]
-            if len(corners_slim) == 6 and cv2.isContourConvex(corners):
-                cv2.drawContours(hexcl, [cnts[1][max_peri_index]], -1, (0, 255, 0), 2)
-                for i, v in enumerate(corners_slim):
-                    cv2.circle(hexcl, tuple(v), 10, (0, 0, 100 + 30 * i), 1)
-
-                found = True
-                corners_out.append(corners_slim)
-                contours_out.append(cnts[1][max_peri_index])
-                out.append(hex)
-
-                # r[j][k], g[j][k], b[j][k] = input_item_cell
-                # if b[j][k] > bmax:
-                #     bmax = b[j][k]
-
-                # if 120/360 <= input_item_cell[0] <= 340/360 and input_item_cell[1] > 0.1:
-                #     threshb[j][k] = 1.0
-                #     # print(input_item_cell)
-                # else:
-                #     threshb[j][k] = 0.0
-        # print(bmax)
+        corners, contours, hex, found = check_for_hexagon(threshb)
 
         for dist in range(30, 90, 10):
             if found:
                 break
 
-        # for j, input_item_row in enumerate(input_item):
-        #     for k, input_item_cell in enumerate(input_item_row):
-        #         # print(input_grey_item[j][k])
-        #         b[j][k], g[j][k], r[j][k] = input_item_cell
-        #         threshb[j][k] = b[j][k] > r[j][k]*THRESHOLD_VALUE and 200 > input_grey_item[j][k] > 50
-        #         print(hsv[j][k][1])
-        #         if(hsv[j][k][1] > bmax):
-        #             bmax = hsv[j][k][1]
-        # print(bmax)
-        # filled = binary_fill_hole[k]s(threshb)
             for angle in range(180, 300, 10):
                 if found:
                     break
                 for j, input_item_row in enumerate(input_item):
                     for k, input_item_cell in enumerate(input_item_row):
                         threshb[j][k] = (angle - dist / 2) / 2 < hsv[j][k][0] < (angle + dist / 2) / 2# and hsv[j][k][1] > 100
-                        # if threshb[j][k] == 1:
-                        #     print(hsv[j][k][1])
-                        # print(threshb[j][k])
-                        # print((angle - dist / 2) / 2)
-                        # print((angle + dist / 2) / 2)
-                        # print(hsv[j][k][0])
-                        # filling holes
-                # Copy the thresholded image.
-                im_floodfill = threshb.copy()
+                corners, contours, hex, found = check_for_hexagon(threshb)
 
-                # Mask used to flood filling.
-                # Notice the size needs to be 2 pixels than the image.
-                h, w = threshb.shape[:2]
-                mask = np.zeros((h + 2, w + 2), np.uint8)
-
-                # Floodfill from point (0, 0)
-                cv2.floodFill(im_floodfill, mask, (0, 0), 255)
-
-                # Invert floodfilled image
-                im_floodfill_inv = cv2.bitwise_not(im_floodfill)
-
-                # Combine the two images to get the foreground.
-                hex = threshb | im_floodfill_inv
-
-                hex = cv2.GaussianBlur(hex, (7, 7), 0)
-                cnts = cv2.findContours(hex.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-                # for c in cnts[1]:
-                    # cv2.drawContours(input_item, [c], -1, (0, 255, 0), 2)
-                    # hexclr = cv2.cvtColor(hex, cv2.COLOR_GRAY2RGB)
-                    # cv2.drawContours(hexclr, [c], -1, (0, 255, 0), 2)
-
-                hexcl = cv2.cvtColor(hex, cv2.COLOR_GRAY2RGB)
-
-                max_peri = 0
-                max_peri_index = 0
-
-                for i, c in enumerate(cnts[1]):
-                    peri = cv2.arcLength(c, True)
-                    if peri > max_peri:
-                        max_peri = peri
-                        max_peri_index = i
-
-                if len(cnts[1]) > 0:
-                    corners = cv2.approxPolyDP(cnts[1][max_peri_index], 0.01 * max_peri, True)
-                    corners_slim = [v[0] for v in corners.tolist()]
-                    if len(corners_slim) == 6 and cv2.isContourConvex(corners):
-                        cv2.drawContours(hexcl, [cnts[1][max_peri_index]], -1, (0, 255, 0), 2)
-                        for i, v in enumerate(corners_slim):
-                            cv2.circle(hexcl, tuple(v), 10, (0, 0, 100 + 30*i), 1)
-
-                        found = True
-                        corners_out.append(corners_slim)
-                        contours_out.append(cnts[1][max_peri_index])
-                        out.append(hex)
-        #                 cv2.imshow('img2', hexcl)
-        #
-        # cv2.imshow('img', input_item)
-        # cv2.waitKey(0)
-        # cv2.destroyAllWindows()
-
-        if not found:
+        if found:
+            corners_out.append(corners)
+            contours_out.append(contours)
+            out.append(hex)
+        else:
             corners_out.append([])
             contours_out.append([])
             out.append([])
 
-        #     for c in cnts[1]:
-        #         cv2.drawContours(hexcl, [c], -1, (0, 255, 0), 2)
-        #         peri = cv2.arcLength(c, True)
-        #         corners = cv2.approxPolyDP(c, 0.01 * peri, True)
-        #         corners = [v[0] for v in corners.tolist()]
-        #         for i, v in enumerate(corners):
-        #             cv2.circle(hexcl, tuple(v), 10, (0, 0, 100 + 30*i), 1)
-        #         if len(corners) > 0:
-        #             cv2.putText(hexcl, str(len(corners)), (corners[0][0] + 5, corners[0][1] + 10), font, 0.5, (255, 0, 0), 2, cv2.LINE_AA)
-        #
-        #     cv2.imshow('img' + str(angle), hexcl)
-        # cv2.waitKey(0)
-        # cv2.destroyAllWindows()
-
-
-        # filling holes
-        # Copy the thresholded image.
-        im_floodfill = threshb.copy()
-
-        # Mask used to flood filling.
-        # Notice the size needs to be 2 pixels than the image.
-        h, w = threshb.shape[:2]
-        mask = np.zeros((h + 2, w + 2), np.uint8)
-
-        # Floodfill from point (0, 0)
-        cv2.floodFill(im_floodfill, mask, (0, 0), 255)
-
-        # Invert floodfilled image
-        im_floodfill_inv = cv2.bitwise_not(im_floodfill)
-
-        # Combine the two images to get the foreground.
-        hex = threshb | im_floodfill_inv
-
-        hex = cv2.GaussianBlur(hex, (7, 7), 0)
-
-
-        # hexcl = cv2.cvtColor(hex, cv2.COLOR_GRAY2RGB)
-
-
-
-        # for i in range(0, 20):
-        #     filled = morphology.binary_closing(filled)
-        #     filled = morphology.binary_opening(filled)
-
-        # blurred = cv2.GaussianBlur(filled, (5, 5), 0)
-
-        # c = cv2.findContours(filled.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-        # peri = cv2.arcLength(c, True)
-        # approx = cv2.approxPolyDP(c, 0.04 * peri, True)
-        # print(approx)
-        # print(threshb)
-        # print(input_grey_item)
-
-        #
-        # cv2.imshow('img', input_item)
-        # cv2.waitKey(0)
-        # cv2.destroyAllWindows()
-        # cv2.imshow('img', hexcl)
-        # cv2.waitKey(0)
-        # cv2.destroyAllWindows()
-        # # plt.imshow(filled)
-        # plt.gray()
-        # plt.show()
-        # sobel = filters.sobel(threshb)
-        # canny = feature.canny(threshb, sigma=CANNY_SIGMA_VALUE)
-        # out.append([threshb, sobel, canny])
-        # out.append(hex)
-
     return corners_out, contours_out, out
-    # return out
 
 
 # expects list of 6 tuples with vertex coords
@@ -391,25 +231,6 @@ def compute_hex_colors(hexinfo, input, input_grey):
     return [get_hex_colors(hex, image, image_grey) if len(hex) != 0 else [] for hex, image, image_grey in zip(hexinfo, input, input_grey)]
 
 
-def get_corners_contours_opencv(input):
-    vertices = []
-    contours = []
-    for input_item in input:
-        # getting contours
-        cnts = cv2.findContours(input_item.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-        for c in cnts[1]:
-            # cv2.drawContours(input_item, [c], -1, (0, 255, 0), 2)
-            # hexclr = cv2.cvtColor(hex, cv2.COLOR_GRAY2RGB)
-            # cv2.drawContours(hexclr, [c], -1, (0, 255, 0), 2)
-            peri = cv2.arcLength(c, True)
-            corners = cv2.approxPolyDP(c, 0.01 * peri, True)
-
-        vertices.append([v[0] for v in corners.tolist()])
-        contours.append(cnts)
-    return vertices, contours
-
-
 def colors_classification(colors):
     classified = []
     for n, col in enumerate(colors):
@@ -473,71 +294,8 @@ def transform_points(points, perspective):
 
 
 def untransform_points(points, perspective):
-    # for p in points:
-    #     print(p[0])
-    #     print(np.float32(p[0]))
     return [cv2.perspectiveTransform(np.float32([points_item[0]]), np.linalg.inv(perspective_item)) if len(points_item) != 0 else [] for points_item, perspective_item
             in zip(points, perspective)]
-
-
-def get_gameboard_corners(input):
-    for input_item, second in input:
-        # coords = feature.corner_peaks(feature.corner_harris(input_item,k=0.24), min_distance=50,)
-        # coords = feature.corner_peaks(feature.corner_kitchen_rosenfeld(input_item,cval=5), min_distance=50,)
-        coords = feature.corner_peaks(feature.corner_moravec(input_item,), min_distance=50,)
-
-
-        # coords_subpix = feature.corner_subpix(input_item, coords, window_size=20)
-        # print(coords)
-        # print(coords_subpix)
-
-        #contours = measure.find_contours(input_item, 0.8)
-
-        # Display the image and plot all contours found
-        # fig, ax = plt.subplots()
-        # ax.imshow(input_item, interpolation='nearest', cmap=plt.cm.gray)
-        #
-        # for n, contour in enumerate(contours):
-        #     ax.plot(contour[:, 1], contour[:, 0], linewidth=2)
-
-
-        fig, ax = plt.subplots()
-        ax.imshow(input_item, interpolation='nearest', cmap=plt.cm.gray)
-        # ax.plot(coords[:, 1], coords[:, 0], '.b', markersize=3)
-        # ax.plot(coords_subpix[:, 1], coords_subpix[:, 0], '+r', markersize=15)
-        ax.plot(coords[:, 1], coords[:, 0], '+r', markersize=15)
-        plt.show()
-
-
-def get_gameboard_corners(input):
-    for input_item, second in input:
-        # coords = feature.corner_peaks(feature.corner_harris(input_item,k=0.24), min_distance=50,)
-        # coords = feature.corner_peaks(feature.corner_kitchen_rosenfeld(input_item,cval=5), min_distance=50,)
-        # coords = feature.corner_peaks(feature.corner_moravec(input_item,), min_distance=50,)
-
-
-        # coords_subpix = feature.corner_subpix(input_item, coords, window_size=20)
-        # print(coords)
-        # print(coords_subpix)
-
-        #contours = measure.find_contours(input_item, 0.8)
-
-        # Display the image and plot all contours found
-        # fig, ax = plt.subplots()
-        # ax.imshow(input_item, interpolation='nearest', cmap=plt.cm.gray)
-        #
-        # for n, contour in enumerate(contours):
-        #     ax.plot(contour[:, 1], contour[:, 0], linewidth=2)
-
-
-        # fig, ax = plt.subplots()
-        # ax.imshow(input_item, interpolation='nearest', cmap=plt.cm.gray)
-        # # ax.plot(coords[:, 1], coords[:, 0], '.b', markersize=3)
-        # # ax.plot(coords_subpix[:, 1], coords_subpix[:, 0], '+r', markersize=15)
-        # ax.plot(coords[:, 1], coords[:, 0], '+r', markersize=15)
-        # plt.show()
-
-        return feature.corner_peaks(feature.corner_moravec(input_item,), min_distance=50,)
 
 
 def plot_images(input, filled, mod_hexinfo, hexinfo, vertices, contours, colors, classification):
@@ -567,47 +325,12 @@ def plot_images(input, filled, mod_hexinfo, hexinfo, vertices, contours, colors,
         cv2.imwrite('out/' + str(i) + '.jpg', image)
 
 
-        # x_size, y_size = PLOT_SHAPE
-        # ax = plt.subplot(x_size, y_size, 1)
-        # plt.imshow(input_item)
-
-        # for el in hexinfo_item[0]:
-        #     circle = plt.Circle((el[0], el[1]), radius=hexinfo_item[1], alpha=0.4, color='white')
-        #     ax.add_artist(circle)
-
-        # ax = plt.subplot(x_size, y_size, 2)
-        # plt.imshow(out_item[0])
-        # for el, col in zip(hexinfo_item[0], colors_item):
-        #     circle = plt.Circle((el[0], el[1]), radius=hexinfo_item[1], color=col)
-        #     ax.add_artist(circle)
-
-        # ax.plot(corners[:, 1], corners[:, 0], '+r', markersize=15)
-
-        # for index, img in enumerate(out_item):
-        #
-        #     ax = plt.subplot(x_size, y_size, index+3)
-        #     # ax.plot(corners[:, 1], corners[:, 0], '+r', markersize=15)
-        #     plt.imshow(img)
-        #     plt.gray()
-        #
-        # plt.show()
-
 file_paths = list_file_paths(INPUT_DIR_PATH)
 input, input_grey = get_input_data(file_paths)
 vertices, contours, filled = perform_image_computations(input, input_grey)
-# filled = perform_image_computations(input, input_grey)
-# vertices, contours = get_corners_contours_opencv(filled)
 
 straight, straight_grey, perspective = straighten_images(input, input_grey, vertices)
-# #
-# # for v, p in zip(vertices, perspective):
-# #     print([v])
-# #     print(np.float32([v]))
-# #     print(cv2.perspectiveTransform(np.float32([v]), p))
-#
 persp_vertices = transform_points(vertices, perspective)
-# # filled = perform_image_computations(straight, straight_grey)
-# # vertices, contours = get_corners_contours_opencv(filled)
 hexinfo = compute_vertices(persp_vertices)
 colors = compute_hex_colors(hexinfo, straight, straight_grey)
 classification = compute_colors_classification(colors)
